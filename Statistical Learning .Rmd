@@ -1,0 +1,75 @@
+---
+title: "Statistical Learning"
+author: "Dionna Attinson"
+date: "11/26/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(glmnet)
+set.seed(11)
+```
+To illustrate the lasso, we’ll data from a study of factors that affect birthweight. The code chunk below loads and cleans these data, converts to factors where appropriate, and takes a sample of size 200 from the result.
+```{r}
+bwt_df = 
+  read_csv("./extra_topic_data/birthweight.csv") %>% 
+  janitor::clean_names() %>%
+  mutate(
+    babysex = as.factor(babysex),
+    babysex = fct_recode(babysex, "male" = "1", "female" = "2"),
+    frace = as.factor(frace),
+    frace = fct_recode(frace, "white" = "1", "black" = "2", "asian" = "3", 
+                       "puerto rican" = "4", "other" = "8"),
+    malform = as.logical(malform),
+    mrace = as.factor(mrace),
+    mrace = fct_recode(mrace, "white" = "1", "black" = "2", "asian" = "3", 
+                       "puerto rican" = "4")) %>% 
+  sample_n(200)
+```
+To fit a lasso model, we’ll use `glmnet`. This package is widely used and broadly useful, but predates the tidyverse by a long time. The interface asks for an outcome vector y and a matrix of predictors X, which are created next. To create a predictor matrix that includes relevant dummy variables based on factors, we’re using model.matrix and excluding the intercept
+```{r}
+x = model.matrix(bwt ~ ., bwt_df)[,-1]
+y = bwt_df$bwt
+
+lasso_fit = glmnet(x,y)
+```
+We fit the lasso model for each tuning parameter in a pre-defined grid lambda, and then compare the fits using cross validation. I chose this grid using the trusty “try things until it looks right” method; glmnet will pick something reasonable by default if you prefer that. lambda min identifies the exact value to minimize prediction error.
+```{r}
+lambda = 10^(seq(3, -2, -0.1))
+
+lasso_fit =
+  glmnet(x, y, lambda = lambda)
+
+lasso_cv =
+  cv.glmnet(x, y, lambda = lambda)
+
+lambda_opt = lasso_cv$lambda.min
+```
+The plot below shows coefficient estimates corresponding to a subset of the predictors in the dataset – these are predictors that have non-zero coefficients for at least one tuning parameter value in the pre-defined grid. As lambda increases, the coefficient values are shrunk to zero and the model becomes more sparse. The optimal tuning parameter, determined using cross validation, is shown by a vertical blue line.
+```{r}
+broom::tidy(lasso_fit) %>% 
+  select(term, lambda, estimate) %>% 
+  complete(term, lambda, fill = list(estimate = 0) ) %>% 
+  filter(term != "(Intercept)") %>% 
+  ggplot(aes(x = log(lambda, 10), y = estimate, group = term, color = term)) + 
+  geom_path() + 
+  geom_vline(xintercept = log(lambda_opt, 10), color = "blue", size = 1.2) +
+  theme(legend.position = "bottom")
+```
+
+The next plot shows the CV curve itself. This is relatively shallow – having nothing at all in your model isn’t great, but you can get reasonable predictions from models that have “too many” predictors. If you didn't care about signficance and just wanted to be able to predict models with the best accuracy this would work the best. Could tell you prediction of risk (i.e., who is at risk for suicide ideation)
+
+```{r}
+broom::tidy(lasso_cv) %>% 
+  ggplot(aes(x = log(lambda, 10), y = estimate)) + 
+  geom_point()
+```
+```{r}
+lasso_fit = 
+  glmnet(x, y, lambda = lambda_opt)
+
+lasso_fit %>% broom::tidy()
+```
+
