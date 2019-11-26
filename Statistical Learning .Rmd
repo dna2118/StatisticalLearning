@@ -2,7 +2,7 @@
 title: "Statistical Learning"
 author: "Dionna Attinson"
 date: "11/26/2019"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
